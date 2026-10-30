@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 from dotenv import load_dotenv
 from typing import Any
@@ -14,6 +15,7 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.plugins import deepgram, groq, silero
+import redis.asyncio as aioredis
 
 from clinic_logic import find_patient, get_open_slots, confirm_booking, evaluate_refill
 
@@ -28,10 +30,20 @@ Your objective:
 5. Keep spoken responses concise (1 to 2 short sentences). Never recite markdown bullets or formatting.
 """
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+
 class ClinicAgent(Agent):
-    def __init__(self):
+    def __init__(self, redis_conn: aioredis.Redis, room_name: str):
         super().__init__(instructions=SYSTEM_PROMPT)
+        self.redis = redis_conn
+        self.room_name = room_name
         self.verified_patient: dict[str, Any] | None = None
+
+    async def publish_event(self, event_type: str, data: dict[str, Any]):
+        """Helper to broadcast events to the room's Redis channel."""
+        payload = json.dumps({"type": event_type, **data})
+        await self.redis.publish(f"call:{self.room_name}", payload)
 
     @function_tool()
     async def verify_identity(
@@ -40,61 +52,43 @@ class ClinicAgent(Agent):
         full_name: str,
         date_of_birth: str,
     ) -> str:
-        """Verify the caller's identity against clinic records.
-
-        Args:
-            full_name: The patient's full name.
-            date_of_birth: The patient's date of birth in YYYY-MM-DD or spoken format.
-        """
+        """Verify the caller's identity against clinic records."""
         patient = find_patient(full_name, date_of_birth)
         if patient:
             self.verified_patient = patient
+            await self.publish_event("identity_verified", {"patient": patient["name"]})
             return f"Identity verified for {patient['name']}."
-        return "No record found with those details. Advise the caller you can create a temporary intake."
+        return "No record found with those details."
 
     @function_tool()
-    async def list_available_slots(
-        self,
-        context: RunContext,
-    ) -> str:
+    async def list_available_slots(self, context: RunContext) -> str:
         """List open appointment slots with their slot handles (e.g., s1, s2)."""
         return get_open_slots()
 
     @function_tool()
-    async def book_appointment(
-        self,
-        context: RunContext,
-        slot_handle: str,
-    ) -> str:
-        """Book an appointment using a slot handle like s1 or s2.
-
-        Args:
-            slot_handle: The slot identifier chosen by the user (e.g., s1, s2).
-        """
+    async def book_appointment(self, context: RunContext, slot_handle: str) -> str:
+        """Book an appointment using a slot handle like s1 or s2."""
         patient_name = self.verified_patient["name"] if self.verified_patient else "Caller"
-        return confirm_booking(slot_handle, patient_name)
+        result = confirm_booking(slot_handle, patient_name)
+        await self.publish_event("slot_booked", {"slot": slot_handle, "patient": patient_name})
+        return result
 
     @function_tool()
-    async def request_refill(
-        self,
-        context: RunContext,
-        medication_name: str,
-    ) -> str:
-        """Request a prescription refill for a medication.
-
-        Args:
-            medication_name: The exact name of the medication to refill.
-        """
+    async def request_refill(self, context: RunContext, medication_name: str) -> str:
+        """Request a prescription refill for a medication."""
         result = evaluate_refill(medication_name)
         return result["message"]
 
 
 server = AgentServer()
 
+
 @server.rtc_session()
 async def entrypoint(ctx: JobContext):
-    # Connect to room audio
     await ctx.connect(auto_subscribe=agents.AutoSubscribe.AUDIO_ONLY)
+
+    redis_conn = aioredis.from_url(REDIS_URL, decode_responses=True)
+    room_name = ctx.room.name
 
     session = AgentSession(
         vad=silero.VAD.load(),
@@ -103,15 +97,34 @@ async def entrypoint(ctx: JobContext):
         tts=deepgram.TTS(model="aura-asteria-en"),
     )
 
-    clinic_agent = ClinicAgent()
+    clinic_agent = ClinicAgent(redis_conn=redis_conn, room_name=room_name)
 
-    # Start the agent session in the room
+    # Listen for final transcribed user speech and publish to Redis
+    @session.on("user_speech_committed")
+    def on_user_speech(msg):
+        asyncio.create_task(
+            clinic_agent.publish_event("transcript", {
+                "speaker": "Caller",
+                "text": msg.content
+            })
+        )
+
+    # Listen for agent spoken response and publish to Redis
+    @session.on("agent_speech_committed")
+    def on_agent_speech(msg):
+        asyncio.create_task(
+            clinic_agent.publish_event("transcript", {
+                "speaker": "Sidzi",
+                "text": msg.content
+            })
+        )
+
     await session.start(agent=clinic_agent, room=ctx.room)
 
-    # Spoken greeting on join
     await session.generate_reply(
         instructions="Greet the patient warmly, introduce yourself as Sidzi from Maple Grove Family Clinic, and ask for their full name and date of birth."
     )
+
 
 if __name__ == "__main__":
     cli.run_app(server)
