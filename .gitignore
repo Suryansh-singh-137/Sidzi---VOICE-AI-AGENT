@@ -1,34 +1,35 @@
+# Next.js
+.next/
+out/
+build/
+node_modules/
+.turbo/
 
-# Environment variables and secrets
-.env
-.env.*
-!.env.example
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
-# Python virtual environment
-venv/
-.venv/
-env/
+# Python type checking and linting
+.mypy_cache/
+.ruff_cache/
 
-# Python cache files
+# AI / ML generated data
+chroma_db/
+.faiss/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+# Python
 __pycache__/
-*.py[cod]
-*$py.class
+venv/
 
-# Testing and coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDE and editor files
-.vscode/
-.idea/
-
-# Logs
-*.log
-
-# OS-generated files
-.DS_Store
-Thumbs.db
-
-# Local environment files
-.python-version
+# Personal AI tools/configuration
+.agent/
+.impeccable/
+PRODUCT.md
+.env
