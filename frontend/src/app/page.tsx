@@ -85,6 +85,7 @@ export default function Home() {
           setActiveScenario(null);
         }}
         selectedScenario={activeScenario}
+        onOpenStaffConsole={() => setIsStaffConsoleOpen(true)}
       />
       <StaffConsoleModal
         isOpen={isStaffConsoleOpen}

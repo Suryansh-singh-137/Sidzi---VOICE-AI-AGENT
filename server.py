@@ -56,15 +56,18 @@ async def create_call_session():
 @app.get("/api/calls/{room_name}/events/stream")
 async def stream_call_events(room_name: str):
     """SSE endpoint: Listens to the Redis channel for this room and pushes
-
     transcript words down to the frontend in real time.
     """
     async def event_generator():
-        pubsub = redis_client.pubsub()
+        # Send immediate handshake event so browser receives headers and 200 OK immediately
+        yield f"data: {json.dumps({'type': 'connected', 'room': room_name})}\n\n"
+        pubsub = None
         channel = f"call:{room_name}"
-        await pubsub.subscribe(channel)
 
         try:
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(channel)
+
             while True:
                 # Poll Redis for new messages published by agent.py
                 message = await pubsub.get_message(
@@ -75,9 +78,22 @@ async def stream_call_events(room_name: str):
                     yield f"data: {message['data']}\n\n"
                 await asyncio.sleep(0.05)
         except asyncio.CancelledError:
-            # Client disconnected, clean up subscription
-            await pubsub.unsubscribe(channel)
-            await pubsub.close()
+            pass
+        except Exception:
+            # Fallback if Redis is temporarily unreachable locally: keep stream alive with heartbeats
+            try:
+                while True:
+                    await asyncio.sleep(15)
+                    yield f": heartbeat\n\n"
+            except asyncio.CancelledError:
+                pass
+        finally:
+            if pubsub:
+                try:
+                    await pubsub.unsubscribe(channel)
+                    await pubsub.close()
+                except Exception:
+                    pass
 
     return StreamingResponse(
         event_generator(),
@@ -86,6 +102,7 @@ async def stream_call_events(room_name: str):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
         },
     )
 
