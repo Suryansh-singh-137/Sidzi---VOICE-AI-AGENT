@@ -28,7 +28,7 @@ export default function AcousticWaveRibbon({
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     resize();
@@ -41,91 +41,81 @@ export default function AcousticWaveRibbon({
 
       ctx.clearRect(0, 0, width, height);
 
-      // Speed adjusts slightly when active call
-      const speed = isCalling ? 0.022 : 0.009;
+      const speed = isCalling ? 0.02 : 0.008;
       time += speed;
 
-      // Base midline and amplitude
-      const centerY = height * 0.48;
-      const baseAmp = height * 0.28;
+      const centerY = height * 0.52;
+      const baseAmp = height * 0.26;
       const callBoost = isCalling ? 1.25 : 1.0;
 
-      // We render a composite of 3 twisting parametric ribbons with transverse cross-strands
-      // to recreate the iridescent silk / 3D acoustic waveform seen in the reference.
-
-      // Function to calculate curve parameters at normalized x (0 to 1)
+      // Function to calculate parametric wave points
       const getWavePoint = (
         normX: number,
         layerOffset: number,
         t: number,
         ampScale = 1.0
       ) => {
-        // Multi-harmonic sinusoidal wave creating the natural undulating crests and troughs
         const freq1 = 2.4;
-        const freq2 = 4.8;
+        const freq2 = 4.6;
         const freq3 = 1.2;
 
         const w1 = Math.sin(normX * Math.PI * freq1 - t + layerOffset);
-        const w2 = Math.cos(normX * Math.PI * freq2 + t * 0.7 - layerOffset) * 0.35;
+        const w2 = Math.cos(normX * Math.PI * freq2 + t * 0.7 - layerOffset) * 0.32;
         const w3 = Math.sin(normX * Math.PI * freq3 - t * 0.4) * 0.2;
 
-        // Envelope so wave tapers gracefully at screen edges
-        const envelope = Math.sin(normX * Math.PI) * 0.3 + 0.7;
-
+        // Graceful taper at screen edges
+        const envelope = Math.sin(normX * Math.PI) * 0.35 + 0.65;
         const waveHeight = (w1 + w2 + w3) * baseAmp * ampScale * callBoost * envelope;
         const y = centerY + waveHeight;
 
-        // Depth perspective / twist calculation
         const twist = Math.sin(normX * Math.PI * 3.2 - t * 0.8 + layerOffset);
-        const ribbonWidth = (28 + Math.cos(normX * Math.PI * 4 - t) * 14 + twist * 20) * (height / 280);
+        const ribbonWidth = (32 + Math.cos(normX * Math.PI * 4 - t) * 14 + twist * 22) * (height / 280);
 
         return {
           x: normX * width,
           y,
-          width: Math.max(14, ribbonWidth),
+          width: Math.max(16, ribbonWidth),
           twist,
         };
       };
 
-      // 1. Soft Ambient Ground Glow Shadow under the wave
+      const steps = 140;
+
+      // 1. Soft Ambient Ground Glow in Rose-Plum
       ctx.save();
       ctx.beginPath();
-      const shadowSteps = 60;
-      for (let i = 0; i <= shadowSteps; i++) {
-        const nx = i / shadowSteps;
+      for (let i = 0; i <= 60; i++) {
+        const nx = i / 60;
         const pt = getWavePoint(nx, 0, time, 0.95);
-        if (i === 0) ctx.moveTo(pt.x, pt.y + pt.width * 0.6 + 18);
-        else ctx.lineTo(pt.x, pt.y + pt.width * 0.6 + 18);
+        if (i === 0) ctx.moveTo(pt.x, pt.y + pt.width * 0.6 + 16);
+        else ctx.lineTo(pt.x, pt.y + pt.width * 0.6 + 16);
       }
-      ctx.strokeStyle = "rgba(13, 148, 136, 0.12)";
+      ctx.strokeStyle = "rgba(217, 139, 174, 0.16)";
       ctx.lineWidth = 36;
       ctx.filter = "blur(18px)";
       ctx.stroke();
       ctx.restore();
 
-      // 2. Secondary Under-Ribbon (Soft iridescent depth)
+      // 2. Secondary Under-Ribbon (Lavender to Soft Mint Iridescence)
       ctx.save();
       const underGrad = ctx.createLinearGradient(0, centerY - baseAmp, width, centerY + baseAmp);
-      underGrad.addColorStop(0.0, "rgba(20, 184, 166, 0.15)");
-      underGrad.addColorStop(0.3, "rgba(6, 182, 212, 0.3)");
-      underGrad.addColorStop(0.65, "rgba(192, 132, 252, 0.35)");
-      underGrad.addColorStop(0.85, "rgba(45, 212, 191, 0.25)");
-      underGrad.addColorStop(1.0, "rgba(13, 148, 136, 0.15)");
+      underGrad.addColorStop(0.0, "rgba(234, 229, 250, 0.3)");   // Pale lavender
+      underGrad.addColorStop(0.3, "rgba(216, 237, 234, 0.4)");   // Soft mint
+      underGrad.addColorStop(0.65, "rgba(248, 220, 232, 0.45)"); // Soft pink
+      underGrad.addColorStop(0.85, "rgba(101, 184, 181, 0.3)");  // Muted teal
+      underGrad.addColorStop(1.0, "rgba(239, 166, 197, 0.35)");  // Primary pink
 
       ctx.beginPath();
-      const steps = 140;
-      // Top edge of under-ribbon
       for (let i = 0; i <= steps; i++) {
         const nx = i / steps;
-        const pt = getWavePoint(nx, 0.5, time * 0.8, 0.85);
+        const pt = getWavePoint(nx, 0.5, time * 0.85, 0.88);
         const yTop = pt.y - pt.width * 0.45;
         if (i === 0) ctx.moveTo(pt.x, yTop);
         else ctx.lineTo(pt.x, yTop);
       }
-      // Bottom edge
       for (let i = steps; i >= 0; i--) {
         const nx = i / steps;
-        const pt = getWavePoint(nx, 0.5, time * 0.8, 0.85);
+        const pt = getWavePoint(nx, 0.5, time * 0.85, 0.88);
         const yBottom = pt.y + pt.width * 0.45;
         ctx.lineTo(pt.x, yBottom);
       }
@@ -134,18 +124,16 @@ export default function AcousticWaveRibbon({
       ctx.fill();
       ctx.restore();
 
-      // 3. Main Primary Silk Acoustic Ribbon
-      // Create rich multi-stop gradient matching the turquoise / aqua / lavender palette
+      // 3. Primary Silk Acoustic Wave Ribbon (Pink, Rose, Mint, Lavender)
       const mainGrad = ctx.createLinearGradient(0, centerY - baseAmp, width, centerY + baseAmp);
-      mainGrad.addColorStop(0.0, "rgba(13, 148, 136, 0.75)");  // Deep teal
-      mainGrad.addColorStop(0.18, "rgba(20, 184, 166, 0.85)"); // Vibrant teal
-      mainGrad.addColorStop(0.35, "rgba(6, 182, 212, 0.9)");   // Luminous cyan
-      mainGrad.addColorStop(0.52, "rgba(45, 212, 191, 0.88)"); // Aquamarine
-      mainGrad.addColorStop(0.68, "rgba(192, 132, 252, 0.75)");// Soft lavender highlight crest
-      mainGrad.addColorStop(0.82, "rgba(14, 165, 233, 0.85)"); // Sky blue reflection
-      mainGrad.addColorStop(1.0, "rgba(20, 184, 166, 0.75)");  // Seafoam finish
+      mainGrad.addColorStop(0.0, "rgba(217, 139, 174, 0.8)");   // Rose accent
+      mainGrad.addColorStop(0.2, "rgba(239, 166, 197, 0.88)");  // Primary pink
+      mainGrad.addColorStop(0.4, "rgba(216, 237, 234, 0.85)");  // Soft mint accent
+      mainGrad.addColorStop(0.58, "rgba(234, 229, 250, 0.88)"); // Pale lavender
+      mainGrad.addColorStop(0.76, "rgba(185, 104, 145, 0.85)"); // Deep rose
+      mainGrad.addColorStop(0.9, "rgba(239, 166, 197, 0.85)");  // Primary pink
+      mainGrad.addColorStop(1.0, "rgba(101, 184, 181, 0.8)");   // Muted teal
 
-      // Fill main body
       ctx.save();
       ctx.beginPath();
       const ptsTop: { x: number; y: number }[] = [];
@@ -168,40 +156,56 @@ export default function AcousticWaveRibbon({
       }
       ctx.closePath();
       ctx.fillStyle = mainGrad;
-      ctx.shadowColor = "rgba(13, 148, 136, 0.22)";
+      ctx.shadowColor = "rgba(185, 104, 145, 0.2)";
       ctx.shadowBlur = 24;
-      ctx.shadowOffsetY = 12;
+      ctx.shadowOffsetY = 10;
       ctx.fill();
       ctx.restore();
 
-      // 4. Fine Transverse Acoustic Striations / Silk Rib Lines
-      // This is the signature texture from the reference: fine white curved strands crossing the ribbon
+      // 4. Longitudinal Silk Fibres along ribbon length
       ctx.save();
-      const numRibs = Math.floor(width / 7.5); // Density of cross-lines
+      const numLongLines = 7;
+      for (let j = 0; j < numLongLines; j++) {
+        const lineOffsetNorm = (j / (numLongLines - 1) - 0.5) * 0.85;
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+          const nx = i / steps;
+          const pt = getWavePoint(nx, 0, time, 1.0);
+          const yPos = pt.y + pt.width * lineOffsetNorm;
+          if (i === 0) ctx.moveTo(pt.x, yPos);
+          else ctx.lineTo(pt.x, yPos);
+        }
+        ctx.strokeStyle = j === 3 ? "rgba(255, 255, 255, 0.65)" : "rgba(255, 255, 255, 0.25)";
+        ctx.lineWidth = j === 3 ? 1.5 : 0.8;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 5. Fine Transverse Acoustic Rib Lines (Silk wireframe striations)
+      ctx.save();
+      const numRibs = Math.floor(width / 8);
       for (let i = 0; i < numRibs; i++) {
         const nx = i / numRibs;
         const pt = getWavePoint(nx, 0, time, 1.0);
         const halfW = pt.width * 0.5;
 
-        // Subtle perspective curve for each rib line
         const topY = pt.y - halfW;
         const botY = pt.y + halfW;
         const midY = pt.y;
-        const curveOffset = pt.twist * 12;
+        const curveOffset = pt.twist * 14;
 
         ctx.beginPath();
         ctx.moveTo(pt.x, topY);
         ctx.quadraticCurveTo(pt.x + curveOffset, midY, pt.x, botY);
 
-        // Strand opacity modulated across ribbon width
-        const alpha = 0.25 + Math.sin(nx * Math.PI * 8 - time * 2) * 0.12;
+        const alpha = 0.22 + Math.sin(nx * Math.PI * 6 - time * 2) * 0.12;
         ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0.08, alpha)})`;
-        ctx.lineWidth = 1.1;
+        ctx.lineWidth = 1.0;
         ctx.stroke();
       }
       ctx.restore();
 
-      // 5. Specular Highlight Ridge along top crest
+      // 6. Specular Highlight Ridge along top crest (Ivory / Pearl sheen)
       ctx.save();
       ctx.beginPath();
       for (let i = 0; i <= steps; i++) {
@@ -212,29 +216,13 @@ export default function AcousticWaveRibbon({
         else ctx.lineTo(pt.x, topY);
       }
       const ridgeGrad = ctx.createLinearGradient(0, 0, width, 0);
-      ridgeGrad.addColorStop(0, "rgba(255, 255, 255, 0.2)");
-      ridgeGrad.addColorStop(0.3, "rgba(255, 255, 255, 0.85)");
-      ridgeGrad.addColorStop(0.65, "rgba(245, 208, 254, 0.9)"); // iridescent violet specular
-      ridgeGrad.addColorStop(0.85, "rgba(255, 255, 255, 0.8)");
-      ridgeGrad.addColorStop(1, "rgba(255, 255, 255, 0.2)");
+      ridgeGrad.addColorStop(0, "rgba(255, 255, 255, 0.3)");
+      ridgeGrad.addColorStop(0.35, "rgba(255, 255, 255, 0.95)");
+      ridgeGrad.addColorStop(0.65, "rgba(252, 238, 243, 0.95)");
+      ridgeGrad.addColorStop(1, "rgba(255, 255, 255, 0.3)");
 
       ctx.strokeStyle = ridgeGrad;
       ctx.lineWidth = 2.0;
-      ctx.stroke();
-      ctx.restore();
-
-      // 6. Tertiary delicate floating filament wire for extra depth and acoustic aesthetic
-      ctx.save();
-      ctx.beginPath();
-      for (let i = 0; i <= steps; i++) {
-        const nx = i / steps;
-        const pt = getWavePoint(nx, -0.4, time * 1.15, 0.65);
-        const y = pt.y - pt.width * 0.3;
-        if (i === 0) ctx.moveTo(pt.x, y);
-        else ctx.lineTo(pt.x, y);
-      }
-      ctx.strokeStyle = "rgba(45, 212, 191, 0.4)";
-      ctx.lineWidth = 1.2;
       ctx.stroke();
       ctx.restore();
 
@@ -259,4 +247,3 @@ export default function AcousticWaveRibbon({
     </div>
   );
 }
-

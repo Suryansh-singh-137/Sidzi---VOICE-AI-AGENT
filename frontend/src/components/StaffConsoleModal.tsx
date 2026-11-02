@@ -12,20 +12,20 @@ export default function StaffConsoleModal({ isOpen, onClose }: StaffConsoleModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm transition-opacity">
-      <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-zinc-100 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-[#FFF9F8] w-full max-w-3xl rounded-3xl shadow-2xl border border-[#F8DCE8] overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 py-5 bg-zinc-950 text-white flex items-center justify-between">
+        <div className="px-6 py-5 bg-[#29212B] text-white flex items-center justify-between">
           <div>
-            <h3 className="font-sans font-semibold text-lg tracking-tight">
+            <h3 className="font-serif font-normal text-xl tracking-tight">
               Maple Grove Clinic — Staff Console
             </h3>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-[#817780]">
               Live receptionist monitoring & clinical safety triaging
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center text-sm transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-sm transition-colors cursor-pointer"
           >
             ✕
           </button>
@@ -35,31 +35,31 @@ export default function StaffConsoleModal({ isOpen, onClose }: StaffConsoleModal
         <div className="p-6 space-y-6 overflow-y-auto">
           {/* Key Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/80">
-              <span className="text-xs text-zinc-500 font-medium">Active Calls</span>
-              <p className="text-2xl font-bold text-zinc-900 mt-1">1 Live</p>
-              <span className="text-[11px] text-emerald-600 font-medium">Sidzi handling hold queue</span>
+            <div className="p-4 rounded-2xl bg-white border border-[#F8DCE8]">
+              <span className="text-xs text-[#817780] font-medium">Active Calls</span>
+              <p className="text-2xl font-serif text-[#29212B] mt-1">1 Live</p>
+              <span className="text-[11px] text-[#65B8B5] font-medium">Sidzi handling hold queue</span>
             </div>
-            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/80">
-              <span className="text-xs text-zinc-500 font-medium">Appointments Booked Today</span>
-              <p className="text-2xl font-bold text-zinc-900 mt-1">18 Slots</p>
-              <span className="text-[11px] text-zinc-500">Dr. Miller & Dr. Sharma</span>
+            <div className="p-4 rounded-2xl bg-white border border-[#F8DCE8]">
+              <span className="text-xs text-[#817780] font-medium">Appointments Booked Today</span>
+              <p className="text-2xl font-serif text-[#29212B] mt-1">18 Slots</p>
+              <span className="text-[11px] text-[#817780]">Dr. Patel, Dr. Lee, Dr. Miller</span>
             </div>
-            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/80">
-              <span className="text-xs text-zinc-500 font-medium">Nurse Refill Escalations</span>
-              <p className="text-2xl font-bold text-amber-600 mt-1">2 Flagged</p>
-              <span className="text-[11px] text-amber-700 font-medium">Controlled substances routed</span>
+            <div className="p-4 rounded-2xl bg-white border border-[#F8DCE8]">
+              <span className="text-xs text-[#817780] font-medium">Nurse Refill Escalations</span>
+              <p className="text-2xl font-serif text-[#B96891] mt-1">2 Flagged</p>
+              <span className="text-[11px] text-[#B96891] font-medium">Controlled substances routed</span>
             </div>
           </div>
 
           {/* Synthetic Patient Database Overview */}
           <div>
-            <h4 className="text-sm font-semibold text-zinc-900 mb-3">
+            <h4 className="text-sm font-semibold text-[#29212B] mb-3">
               Verified Patient Directory (Demo Fixtures)
             </h4>
-            <div className="border border-zinc-200 rounded-2xl overflow-hidden">
+            <div className="border border-[#F8DCE8] rounded-2xl overflow-hidden bg-white">
               <table className="w-full text-left text-xs">
-                <thead className="bg-zinc-100 text-zinc-700 border-b border-zinc-200">
+                <thead className="bg-[#FCEEF3] text-[#29212B] border-b border-[#F8DCE8]">
                   <tr>
                     <th className="py-2.5 px-4 font-semibold">Patient Name</th>
                     <th className="py-2.5 px-4 font-semibold">DOB</th>
@@ -68,27 +68,27 @@ export default function StaffConsoleModal({ isOpen, onClose }: StaffConsoleModal
                     <th className="py-2.5 px-4 font-semibold">Safety Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100 text-zinc-700">
-                  <tr className="hover:bg-zinc-50">
-                    <td className="py-3 px-4 font-medium text-zinc-900">Maria Gonzalez</td>
+                <tbody className="divide-y divide-[#F8DCE8]/50 text-[#817780]">
+                  <tr className="hover:bg-[#FFF9F8]">
+                    <td className="py-3 px-4 font-medium text-[#29212B]">Maria Gonzalez</td>
                     <td className="py-3 px-4">1985-03-14</td>
                     <td className="py-3 px-4">$20 copay ($500 ded)</td>
                     <td className="py-3 px-4">Amoxicillin</td>
-                    <td className="py-3 px-4 text-emerald-600 font-medium">Standard</td>
+                    <td className="py-3 px-4 text-[#65B8B5] font-medium">Standard</td>
                   </tr>
-                  <tr className="hover:bg-zinc-50">
-                    <td className="py-3 px-4 font-medium text-zinc-900">Travis</td>
+                  <tr className="hover:bg-[#FFF9F8]">
+                    <td className="py-3 px-4 font-medium text-[#29212B]">Travis</td>
                     <td className="py-3 px-4">1997-07-14</td>
                     <td className="py-3 px-4">$15 copay ($250 ded)</td>
                     <td className="py-3 px-4">Lisinopril</td>
-                    <td className="py-3 px-4 text-emerald-600 font-medium">Standard</td>
+                    <td className="py-3 px-4 text-[#65B8B5] font-medium">Standard</td>
                   </tr>
-                  <tr className="hover:bg-zinc-50">
-                    <td className="py-3 px-4 font-medium text-zinc-900">Robert Chen</td>
+                  <tr className="hover:bg-[#FFF9F8]">
+                    <td className="py-3 px-4 font-medium text-[#29212B]">Robert Chen</td>
                     <td className="py-3 px-4">1958-05-09</td>
                     <td className="py-3 px-4">$10 copay ($0 ded)</td>
                     <td className="py-3 px-4">Lisinopril, Lorazepam</td>
-                    <td className="py-3 px-4 text-amber-600 font-medium">⚠️ Controlled Drug</td>
+                    <td className="py-3 px-4 text-[#B96891] font-medium">⚠️ Controlled Drug</td>
                   </tr>
                 </tbody>
               </table>
@@ -96,10 +96,10 @@ export default function StaffConsoleModal({ isOpen, onClose }: StaffConsoleModal
           </div>
         </div>
 
-        <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-100 flex justify-end">
+        <div className="px-6 py-4 bg-white border-t border-[#F8DCE8] flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-zinc-900 text-white text-xs font-medium hover:bg-black transition-colors cursor-pointer"
+            className="px-5 py-2 rounded-xl bg-[#29212B] text-white text-xs font-medium hover:bg-black transition-colors cursor-pointer"
           >
             Close Console
           </button>
@@ -108,4 +108,3 @@ export default function StaffConsoleModal({ isOpen, onClose }: StaffConsoleModal
     </div>
   );
 }
-
