@@ -2,7 +2,8 @@ import os
 import json
 import asyncio
 from dotenv import load_dotenv
-from typing import Any
+from typing import Any, Annotated
+from pydantic import Field
 
 from livekit import agents
 from livekit.agents import (
@@ -42,15 +43,25 @@ class ClinicAgent(Agent):
 
     async def publish_event(self, event_type: str, data: dict[str, Any]):
         """Helper to broadcast events to the room's Redis channel."""
-        payload = json.dumps({"type": event_type, **data})
-        await self.redis.publish(f"call:{self.room_name}", payload)
+        try:
+            payload = json.dumps({"type": event_type, **data})
+            await self.redis.publish(f"call:{self.room_name}", payload)
+        except Exception:
+            # Redis is optional; if offline, voice over LiveKit still works
+            pass
+
+    async def on_enter(self):
+        """Lifecycle hook: runs when agent joins the room to deliver opening greeting."""
+        self.session.generate_reply(
+            instructions="Greet the patient warmly, introduce yourself as Sidzi from Maple Grove Family Clinic, and ask for their full name and date of birth."
+        )
 
     @function_tool()
     async def verify_identity(
         self,
+        full_name: Annotated[str, Field(description="Caller's full legal name, e.g. Maria Gonzalez")],
+        date_of_birth: Annotated[str, Field(description="Caller's date of birth in YYYY-MM-DD or spoken format like March 14, 1985")],
         context: RunContext,
-        full_name: str,
-        date_of_birth: str,
     ) -> str:
         """Verify the caller's identity against clinic records."""
         patient = find_patient(full_name, date_of_birth)
@@ -66,7 +77,11 @@ class ClinicAgent(Agent):
         return get_open_slots()
 
     @function_tool()
-    async def book_appointment(self, context: RunContext, slot_handle: str) -> str:
+    async def book_appointment(
+        self,
+        slot_handle: Annotated[str, Field(description="Slot handle identifier like s1 or s2")],
+        context: RunContext,
+    ) -> str:
         """Book an appointment using a slot handle like s1 or s2."""
         patient_name = self.verified_patient["name"] if self.verified_patient else "Caller"
         result = confirm_booking(slot_handle, patient_name)
@@ -74,7 +89,11 @@ class ClinicAgent(Agent):
         return result
 
     @function_tool()
-    async def request_refill(self, context: RunContext, medication_name: str) -> str:
+    async def request_refill(
+        self,
+        medication_name: Annotated[str, Field(description="Name of the prescription medication to refill, e.g. Amoxicillin or Lorazepam")],
+        context: RunContext,
+    ) -> str:
         """Request a prescription refill for a medication."""
         result = evaluate_refill(medication_name)
         return result["message"]
@@ -93,7 +112,7 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model="nova-2-general"),
-        llm=groq.LLM(model="llama-3.3-70b-versatile"),
+        llm=groq.LLM(model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")),
         tts=deepgram.TTS(model="aura-asteria-en"),
     )
 
@@ -119,11 +138,8 @@ async def entrypoint(ctx: JobContext):
             })
         )
 
+    # Starts session; clinic_agent.on_enter() will automatically fire the opening greeting
     await session.start(agent=clinic_agent, room=ctx.room)
-
-    await session.generate_reply(
-        instructions="Greet the patient warmly, introduce yourself as Sidzi from Maple Grove Family Clinic, and ask for their full name and date of birth."
-    )
 
 
 if __name__ == "__main__":

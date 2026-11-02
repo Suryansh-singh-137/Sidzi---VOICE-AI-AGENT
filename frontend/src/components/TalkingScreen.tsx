@@ -147,6 +147,8 @@ export default function TalkingScreen({
         console.warn("Microphone not available:", err);
       });
 
+    let isMounted = true;
+
     // If sessionData provided from backend, connect via LiveKit WebRTC!
     if (sessionData && sessionData.token && sessionData.livekit_url) {
       try {
@@ -156,41 +158,82 @@ export default function TalkingScreen({
         });
         roomRef.current = room;
 
-        room.on(RoomEvent.TrackSubscribed, (track: Track) => {
+        room.on(RoomEvent.ParticipantConnected, (participant) => {
+          console.log("[LiveKit] Remote participant connected:", participant.identity, participant.name);
+        });
+
+        room.on(RoomEvent.TrackSubscribed, (track: Track, publication, participant) => {
+          console.log("[LiveKit] Subscribed to track:", track.kind, "from", participant.identity);
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach();
             document.body.appendChild(el);
-            setAgentStatus("Speaking");
+            el.play().catch((err) => console.warn("Browser audio playback note:", err));
+            if (isMounted) setAgentStatus("Speaking");
           }
+        });
+
+        room.on(RoomEvent.TrackUnsubscribed, (track: Track) => {
+          track.detach().forEach((el) => el.remove());
         });
 
         room.connect(sessionData.livekit_url, sessionData.token).then(() => {
-          room.localParticipant.setMicrophoneEnabled(true);
+          if (isMounted) {
+            room.localParticipant.setMicrophoneEnabled(true);
+          }
         }).catch((err) => {
+          // Ignore harmless React StrictMode unmount-in-flight cancellation
+          if (!isMounted || err?.message?.includes("Client initiated disconnect") || err?.name === "AbortError") {
+            return;
+          }
           console.warn("LiveKit Room connect error (running locally):", err);
         });
 
-        // Listen to SSE events stream from backend
-        const sseUrl = `/api/calls/${sessionData.room_name}/events/stream`;
-        const sse = new EventSource(sseUrl);
-        sseRef.current = sse;
+        // Listen to SSE events stream directly from backend if local, or via proxy
+        const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+        const sseBase = isLocal ? "http://127.0.0.1:8000" : "";
+        const sseUrl = `${sseBase}/api/calls/${sessionData.room_name}/events/stream`;
 
-        sse.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === "transcript") {
-              addMessage(data.speaker === "Sidzi" ? "Sidzi" : "Caller", data.text);
-              if (data.speaker === "Sidzi") setAgentStatus("Speaking");
-              else setAgentStatus("Listening");
-            } else if (data.type === "identity_verified") {
-              addMessage("Sidzi", `Identity verified for ${data.patient}.`, `Verified: ${data.patient}`, "success");
-            } else if (data.type === "slot_booked") {
-              addMessage("Sidzi", `Appointment confirmed for ${data.patient} on slot ${data.slot}.`, `Booked: ${data.slot}`, "success");
+        let sseErrorCount = 0;
+        try {
+          const sse = new EventSource(sseUrl);
+          sseRef.current = sse;
+
+          sse.onopen = () => {
+            sseErrorCount = 0;
+          };
+
+          sse.onerror = () => {
+            sseErrorCount++;
+            if (sseErrorCount >= 2) {
+              // Gracefully close to prevent infinite retry loops in console
+              // if backend Redis event stream is not running
+              sse.close();
+              if (sseRef.current === sse) {
+                sseRef.current = null;
+              }
             }
-          } catch (e) {
-            console.error("SSE parse error:", e);
-          }
-        };
+          };
+
+          sse.onmessage = (event) => {
+            if (!isMounted) return;
+            try {
+              const data = JSON.parse(event.data);
+              if (data.type === "transcript") {
+                addMessage(data.speaker === "Sidzi" ? "Sidzi" : "Caller", data.text);
+                if (data.speaker === "Sidzi") setAgentStatus("Speaking");
+                else setAgentStatus("Listening");
+              } else if (data.type === "identity_verified") {
+                addMessage("Sidzi", `Identity verified for ${data.patient}.`, `Verified: ${data.patient}`, "success");
+              } else if (data.type === "slot_booked") {
+                addMessage("Sidzi", `Appointment confirmed for ${data.patient} on slot ${data.slot}.`, `Booked: ${data.slot}`, "success");
+              }
+            } catch (e) {
+              console.error("SSE parse error:", e);
+            }
+          };
+        } catch {
+          // EventSource constructor fallback
+        }
       } catch (err) {
         console.warn("LiveKit initialization note:", err);
       }
@@ -199,11 +242,14 @@ export default function TalkingScreen({
     // Initial greeting if scenario was pre-selected
     if (selectedScenario) {
       setTimeout(() => {
-        handleActionClick(selectedScenario.title, `I'm ${selectedScenario.name}, born ${selectedScenario.dob}.`);
+        if (isMounted) {
+          handleActionClick(selectedScenario.title, `I'm ${selectedScenario.name}, born ${selectedScenario.dob}.`);
+        }
       }, 1000);
     }
 
     return () => {
+      isMounted = false;
       if (roomRef.current) {
         roomRef.current.disconnect();
         roomRef.current = null;

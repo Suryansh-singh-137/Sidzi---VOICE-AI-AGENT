@@ -37,6 +37,20 @@ async def create_call_session():
     # Generate a unique room name for each new call
     room_name = f"call_{os.urandom(4).hex()}"
 
+    # Dispatch an agent worker to this room on LiveKit Cloud
+    try:
+        http_url = LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://")
+        async with api.LiveKitAPI(http_url, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) as lkapi:
+            await lkapi.agent_dispatch.create_dispatch(
+                api.CreateAgentDispatchRequest(
+                    room=room_name,
+                    agent_name="",
+                )
+            )
+            print(f"[Sidzi] Dispatched agent to room {room_name}")
+    except Exception as e:
+        print(f"[Sidzi] Agent dispatch note (worker will join when available): {e}")
+
     # Sign a token with permission to join this specific room
     token = (
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
