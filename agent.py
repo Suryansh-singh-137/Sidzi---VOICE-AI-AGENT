@@ -1,9 +1,11 @@
+from livekit.agents.inference.eot import detector
 import os
 import json
 import asyncio
 from dotenv import load_dotenv
 from typing import Any, Annotated
 from pydantic import Field
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from livekit import agents
 from livekit.agents import (
@@ -114,6 +116,8 @@ async def entrypoint(ctx: JobContext):
         stt=deepgram.STT(model="nova-2-general"),
         llm=groq.LLM(model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")),
         tts=deepgram.TTS(model="aura-asteria-en"),
+        turn_detection= MultilingualModel ## sematic  turn detection  
+    
     )
 
     clinic_agent = ClinicAgent(redis_conn=redis_conn, room_name=room_name)

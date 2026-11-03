@@ -1,0 +1,17 @@
+[project]
+name = "sidzi"
+version = "0.1.0"
+description = "Sidzi - AI Clinic Receptionist"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "redis",
+    "livekit-api",
+    "livekit-agents[turn-detector]",
+    "livekit-plugins-deepgram",
+    "livekit-plugins-groq",
+    "livekit-plugins-silero",
+    "livekit-plugins-turn-detector",
+    "python-dotenv",
+]
