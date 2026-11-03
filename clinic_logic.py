@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 # Synthetic patient records for demo testing
 PATIENTS_DATABASE = {
@@ -33,9 +34,32 @@ APPOINTMENT_SLOTS = {
 CONTROLLED_DRUGS = {"lorazepam", "adderall", "oxycodone", "xanax", "morphine"}
 
 
+def normalize_dob(dob: str) -> str:
+    """Normalize common spoken or written date formats to ISO YYYY-MM-DD."""
+    cleaned = dob.strip()
+    date_formats = [
+        "%Y-%m-%d",
+        "%B %d, %Y",
+        "%B %d %Y",
+        "%b %d, %Y",
+        "%b %d %Y",
+        "%m/%d/%Y",
+        "%m-%d-%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+    ]
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(cleaned, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return cleaned
+
+
 def find_patient(name: str, dob: str) -> Optional[Dict[str, Any]]:
     """Strict code verification: matches normalized name and date of birth."""
-    key = (name.strip().lower(), dob.strip())
+    norm_dob = normalize_dob(dob)
+    key = (name.strip().lower(), norm_dob)
     return PATIENTS_DATABASE.get(key)
 
 
