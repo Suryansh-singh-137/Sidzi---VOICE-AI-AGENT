@@ -13,10 +13,12 @@ load_dotenv()
 
 app = FastAPI(title="Sidzi Voice API")
 
-# Allow the frontend (running on port 3000) to communicate with this API
+# Allow the frontend (running on port 3000) to communicate with this API.
+# NOTE: browsers reject allow_origins=["*"] combined with allow_credentials=True,
+# so we list the real origins instead.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,23 +35,14 @@ redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
 
 @app.post("/api/calls/session")
 async def create_call_session():
-    """Generates a room ID and a signed LiveKit access token for the caller."""
+    """Generates a room ID and a signed LiveKit access token for the caller.
+
+    We do NOT dispatch the agent here. The worker in agent.py has no agent_name,
+    so LiveKit dispatches it automatically as soon as a participant joins a new
+    room. Dispatching explicitly as well created two agents in the same room.
+    """
     # Generate a unique room name for each new call
     room_name = f"call_{os.urandom(4).hex()}"
-
-    # Dispatch an agent worker to this room on LiveKit Cloud
-    try:
-        http_url = LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://")
-        async with api.LiveKitAPI(http_url, LIVEKIT_API_KEY, LIVEKIT_API_SECRET) as lkapi:
-            await lkapi.agent_dispatch.create_dispatch(
-                api.CreateAgentDispatchRequest(
-                    room=room_name,
-                    agent_name="",
-                )
-            )
-            print(f"[Sidzi] Dispatched agent to room {room_name}")
-    except Exception as e:
-        print(f"[Sidzi] Agent dispatch note (worker will join when available): {e}")
 
     # Sign a token with permission to join this specific room
     token = (
@@ -70,10 +63,10 @@ async def create_call_session():
 @app.get("/api/calls/{room_name}/events/stream")
 async def stream_call_events(room_name: str):
     """SSE endpoint: Listens to the Redis channel for this room and pushes
-    transcript words down to the frontend in real time.
+    transcript lines and call events down to the frontend in real time.
     """
     async def event_generator():
-        # Send immediate handshake event so browser receives headers and 200 OK immediately
+        # Immediate handshake so the browser gets headers and a 200 right away
         yield f"data: {json.dumps({'type': 'connected', 'room': room_name})}\n\n"
         pubsub = None
         channel = f"call:{room_name}"
@@ -83,22 +76,26 @@ async def stream_call_events(room_name: str):
             await pubsub.subscribe(channel)
 
             while True:
-                # Poll Redis for new messages published by agent.py
+                # get_message(timeout=1.0) already waits up to 1s for data,
+                # so no extra sleep is needed in the loop.
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True, timeout=1.0
                 )
                 if message and message.get("data"):
-                    # Format as SSE event: "data: <payload>\n\n"
                     yield f"data: {message['data']}\n\n"
-                await asyncio.sleep(0.05)
+                else:
+                    # Keeps the connection alive through proxies and lets us
+                    # notice quickly when the client has disconnected.
+                    yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
-        except Exception:
-            # Fallback if Redis is temporarily unreachable locally: keep stream alive with heartbeats
+        except Exception as e:
+            # Don't hide Redis problems: log them, then keep the stream alive
+            print(f"[Sidzi] SSE Redis error for {room_name}: {e!r}")
             try:
                 while True:
                     await asyncio.sleep(15)
-                    yield f": heartbeat\n\n"
+                    yield ": heartbeat\n\n"
             except asyncio.CancelledError:
                 pass
         finally:
@@ -116,7 +113,6 @@ async def stream_call_events(room_name: str):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
         },
     )
 

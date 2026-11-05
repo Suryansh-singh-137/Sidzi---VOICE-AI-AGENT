@@ -86,9 +86,10 @@ class ClinicAgent(Agent):
         try:
             payload = json.dumps({"type": event_type, **data})
             await self.redis.publish(f"call:{self.room_name}", payload)
-        except Exception:
-            # Redis is optional; if offline, voice over LiveKit still works
-            pass
+        except Exception as e:
+            # Redis is optional; voice over LiveKit still works without it.
+            # Print the error so a dead Redis doesn't fail silently.
+            print(f"[Sidzi] Redis publish failed: {e!r}")
 
     async def on_enter(self):
         """Lifecycle hook: runs when agent joins the room to deliver opening greeting."""
@@ -126,7 +127,9 @@ class ClinicAgent(Agent):
         """Book an appointment using a slot handle like s1 or s2."""
         patient_name = self.verified_patient["name"] if self.verified_patient else "Caller"
         result = confirm_booking(slot_handle, patient_name)
-        await self.publish_event("slot_booked", {"slot": slot_handle, "patient": patient_name})
+        # Only announce a booking to the UI if it actually succeeded
+        if result.startswith("Appointment confirmed"):
+            await self.publish_event("slot_booked", {"slot": slot_handle, "patient": patient_name})
         return result
 
     @function_tool()
@@ -149,6 +152,15 @@ async def entrypoint(ctx: JobContext):
 
     redis_conn = aioredis.from_url(REDIS_URL, decode_responses=True)
     room_name = ctx.room.name
+
+    # Close the Redis connection when this call ends
+    async def close_redis():
+        try:
+            await redis_conn.aclose()
+        except Exception:
+            pass
+
+    ctx.add_shutdown_callback(close_redis)
 
     session = AgentSession(
         vad=silero.VAD.load(
@@ -176,36 +188,42 @@ async def entrypoint(ctx: JobContext):
 
     clinic_agent = ClinicAgent(redis_conn=redis_conn, room_name=room_name)
 
-    # Listen for final transcribed user speech and publish to Redis
-    @session.on("user_speech_committed")
-    def on_user_speech(msg):
-        asyncio.create_task(
-            clinic_agent.publish_event("transcript", {
-                "speaker": "Caller",
-                "text": msg.content
-            })
-        )
+    # Caller speech: fires for interim and final transcripts, so keep finals only
+    @session.on("user_input_transcribed")
+    def on_user_input(ev):
+        if ev.is_final and ev.transcript.strip():
+            asyncio.create_task(
+                clinic_agent.publish_event("transcript", {
+                    "speaker": "Caller",
+                    "text": ev.transcript,
+                })
+            )
 
-    # Listen for agent spoken response and publish to Redis
-    @session.on("agent_speech_committed")
-    def on_agent_speech(msg):
-        asyncio.create_task(
-            clinic_agent.publish_event("transcript", {
-                "speaker": "Sidzi",
-                "text": msg.content
-            })
-        )
+    # Every message added to the conversation (the greeting included).
+    # We only forward the assistant's side here, since the caller's side
+    # is already handled by user_input_transcribed above.
+    @session.on("conversation_item_added")
+    def on_item_added(ev):
+        item = ev.item
+        if getattr(item, "role", None) == "assistant" and item.text_content:
+            asyncio.create_task(
+                clinic_agent.publish_event("transcript", {
+                    "speaker": "Sidzi",
+                    "text": item.text_content,
+                })
+            )
 
-    # Observability: Real-time latency metrics per conversational turn
+    # Observability: the event wraps the real metric object in ev.metrics
     @session.on("metrics_collected")
-    def on_metrics_collected(met: metrics.AgentMetrics):
+    def on_metrics_collected(ev):
+        met = ev.metrics
         metrics.log_metrics(met)
         if isinstance(met, metrics.EOUMetrics):
-            print(f"[Observability] 🎯 End of Turn Delay: {met.end_of_utterance_delay * 1000:.0f}ms | STT Lag: {met.transcription_delay * 1000:.0f}ms")
+            print(f"[Observability] End of Turn Delay: {met.end_of_utterance_delay * 1000:.0f}ms | STT Lag: {met.transcription_delay * 1000:.0f}ms")
         elif isinstance(met, metrics.LLMMetrics):
-            print(f"[Observability] 🧠 LLM TTFT: {met.ttft * 1000:.0f}ms | Speed: {met.tokens_per_second:.1f} tok/s")
+            print(f"[Observability] LLM TTFT: {met.ttft * 1000:.0f}ms | Speed: {met.tokens_per_second:.1f} tok/s")
         elif isinstance(met, metrics.TTSMetrics):
-            print(f"[Observability] 🔊 TTS First Byte: {met.ttfb * 1000:.0f}ms | Spoken Audio: {met.audio_duration:.2f}s")
+            print(f"[Observability] TTS First Byte: {met.ttfb * 1000:.0f}ms | Spoken Audio: {met.audio_duration:.2f}s")
 
     # Starts session; clinic_agent.on_enter() will automatically fire the opening greeting
     await session.start(agent=clinic_agent, room=ctx.room)
