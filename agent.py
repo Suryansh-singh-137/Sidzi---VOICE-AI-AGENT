@@ -82,13 +82,13 @@ class ClinicAgent(Agent):
         self.verified_patient: dict[str, Any] | None = None
 
     async def publish_event(self, event_type: str, data: dict[str, Any]):
-        """Helper to broadcast events to the room's Redis channel."""
+        """Helper to write events to the room's Redis stream."""
         try:
             payload = json.dumps({"type": event_type, **data})
-            await self.redis.publish(f"call:{self.room_name}", payload)
+            key = f"call:{self.room_name}"
+            await self.redis.xadd(key, {"data": payload}, maxlen=1000)
+            await self.redis.expire(key, 3600)   # delete the stream after 1 hour
         except Exception as e:
-            # Redis is optional; voice over LiveKit still works without it.
-            # Print the error so a dead Redis doesn't fail silently.
             print(f"[Sidzi] Redis publish failed: {e!r}")
 
     async def on_enter(self):
