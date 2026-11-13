@@ -28,7 +28,7 @@ It can:
 The following diagram illustrates Sidzi's end-to-end architecture, including the frontend, backend, real-time voice infrastructure, agent pipeline, and Redis-based event communication.
 
 <div align="center">
-  <img src="docs/sidzi_Architecture.svg" alt="Sidzi System Architecture" width="100%" />
+  <img src="https://github.com/user-attachments/assets/f8fa98ea-a435-4575-bf24-8fc63d96eea1" alt="Sidzi System Architecture" width="100%" />
 </div>
 
 ### How the pieces fit together
@@ -211,8 +211,6 @@ sidzi/
 ├── server.py         # FastAPI: token endpoint and live event stream (SSE)
 ├── clinic_logic.py   # Patients, slots and refill rules
 ├── frontend/         # Next.js web app (call modal, transcript, consoles)
-├── docs/
-│   └── sidzi_Architecture.svg  # System architecture diagram
 ├── .env              # Your secrets (not committed)
 └── README.md
 ```
