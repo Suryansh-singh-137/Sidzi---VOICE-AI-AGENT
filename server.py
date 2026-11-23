@@ -68,27 +68,30 @@ async def stream_call_events(room_name: str):
     transcript lines and call events down to the frontend in real time.
     """
     async def event_generator():
-        # Keep this first line as it is
+        # Immediate handshake so the browser gets headers and a 200 right away
         yield f"data: {json.dumps({'type': 'connected', 'room': room_name})}\n\n"
-
-        key = f"call:{room_name}"   # the notebook for this call
-        last_id = "0"               # "0" means: start from the very first line
+        pubsub = None
+        channel = f"call:{room_name}"
 
         try:
-            while True:
-                # Wait up to 1 second for lines newer than last_id
-                result = await redis_client.xread({key: last_id}, block=1000)
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(channel)
 
-                if result:
-                    for _stream_name, messages in result:
-                        for msg_id, fields in messages:
-                            last_id = msg_id   # move the bookmark forward
-                            yield f"id: {msg_id}\ndata: {fields['data']}\n\n"
+            while True:
+                # get_message(timeout=1.0) already waits up to 1s for data,
+                # so no extra sleep is needed in the loop.
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=1.0
+                )
+                if message and message.get("data"):
+                    yield f"data: {message['data']}\n\n"
                 else:
-                    yield ": keepalive\n\n"   # nothing new, keep the connection alive
+                    # Keeps the connection alive and lets us notice a disconnect
+                    yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
         except Exception as e:
+            # Don't hide Redis problems: log them, then keep the stream alive
             print(f"[Sidzi] SSE Redis error for {room_name}: {e!r}")
             try:
                 while True:
@@ -96,6 +99,13 @@ async def stream_call_events(room_name: str):
                     yield ": heartbeat\n\n"
             except asyncio.CancelledError:
                 pass
+        finally:
+            if pubsub:
+                try:
+                    await pubsub.unsubscribe(channel)
+                    await pubsub.close()
+                except Exception:
+                    pass
 
     return StreamingResponse(
         event_generator(),

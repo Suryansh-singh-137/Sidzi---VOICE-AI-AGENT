@@ -43,12 +43,6 @@ export default function Navbar({
         {/* Desktop Navigation Items */}
         <nav className="hidden md:flex items-center gap-7" aria-label="Main Navigation">
           <a
-            href="#services"
-            className="text-[14.5px] font-normal text-[#817780] hover:text-[#29212B] transition-colors"
-          >
-            Services
-          </a>
-          <a
             href="#how-it-works"
             className="text-[14.5px] font-normal text-[#817780] hover:text-[#29212B] transition-colors"
           >
@@ -131,13 +125,6 @@ export default function Navbar({
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden px-6 py-5 bg-[#FFF9F8] border-b border-[#F8DCE8] space-y-4">
-          <a
-            href="#services"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block text-sm font-medium text-[#29212B]"
-          >
-            Services
-          </a>
           <a
             href="#how-it-works"
             onClick={() => setMobileMenuOpen(false)}

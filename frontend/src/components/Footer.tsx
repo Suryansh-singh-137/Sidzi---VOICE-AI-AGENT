@@ -74,11 +74,6 @@ export default function Footer({
                   Prescription refills
                 </button>
               </li>
-              <li>
-                <a href="#services" className="hover:text-[#29212B] transition-colors">
-                  Clinical services
-                </a>
-              </li>
             </ul>
           </div>
 

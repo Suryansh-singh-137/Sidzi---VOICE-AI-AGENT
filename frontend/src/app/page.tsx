@@ -5,10 +5,8 @@ import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
 import ProductShowcase from "@/components/ProductShowcase";
 import HowItWorks from "@/components/HowItWorks";
-import ServicesSection from "@/components/ServicesSection";
 import CareTeamSection from "@/components/CareTeamSection";
 import ConversationDemo from "@/components/ConversationDemo";
-import TestimonialsSection from "@/components/TestimonialsSection";
 import TryItNowSection, { DemoPatientScenario } from "@/components/TryItNowSection";
 import FinalCTA from "@/components/FinalCTA";
 import Footer from "@/components/Footer";
@@ -49,28 +47,22 @@ export default function Home() {
       {/* Section 4: How It Works — 3-Step Patient Journey */}
       <HowItWorks />
 
-      {/* Section 5: Clinical Services */}
-      <ServicesSection />
-
-      {/* Section 6: Care Team */}
+      {/* Section 5: Care Team */}
       <CareTeamSection />
 
-      {/* Section 7: Patient Conversation Experience (Interactive & Animated) */}
+      {/* Section 6: Patient Conversation Experience (Interactive & Animated) */}
       <ConversationDemo onCallClick={() => handleStartCall()} />
 
-      {/* Section 8: Testimonials & Verified Metrics */}
-      <TestimonialsSection />
-
-      {/* Interactive Demo Patient Persona Console */}
+      {/* Section 7: Interactive Demo Patient Persona Console */}
       <TryItNowSection
         onSelectScenario={(scenario) => handleStartCall(scenario)}
         onCallClick={() => handleStartCall()}
       />
 
-      {/* Section 9: Final Welcoming CTA */}
+      {/* Section 8: Final Welcoming CTA */}
       <FinalCTA onCallClick={() => handleStartCall()} />
 
-      {/* Section 10: Clinic Footer */}
+      {/* Section 9: Clinic Footer */}
       <Footer
         onCallClick={() => handleStartCall()}
         onStaffConsoleClick={() => setIsStaffConsoleOpen(true)}
