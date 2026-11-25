@@ -8,3 +8,4 @@ livekit-plugins-groq
 livekit-plugins-silero
 livekit-plugins-turn-detector
 python-dotenv
+asyncpg

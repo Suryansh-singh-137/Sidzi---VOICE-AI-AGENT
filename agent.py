@@ -105,7 +105,7 @@ class ClinicAgent(Agent):
         context: RunContext,
     ) -> str:
         """Verify the caller's identity against clinic records."""
-        patient = find_patient(full_name, date_of_birth)
+        patient = await find_patient(full_name, date_of_birth)
         if patient:
             self.verified_patient = patient
             await self.publish_event("identity_verified", {"patient": patient["name"]})
@@ -115,7 +115,7 @@ class ClinicAgent(Agent):
     @function_tool()
     async def list_available_slots(self, context: RunContext) -> str:
         """List open appointment slots with their slot handles (e.g., s1, s2). Summarize available times naturally without reciting the handles aloud."""
-        return get_open_slots()
+        return await get_open_slots()
 
     @function_tool()
     async def book_appointment(
@@ -124,8 +124,11 @@ class ClinicAgent(Agent):
         context: RunContext,
     ) -> str:
         """Book an appointment using a slot handle like s1 or s2."""
-        patient_name = self.verified_patient["name"] if self.verified_patient else "Caller"
-        result = confirm_booking(slot_handle, patient_name)
+        if not self.verified_patient:
+            return "Please verify your full name and date of birth first before booking an appointment."
+        patient_id = self.verified_patient["id"]
+        patient_name = self.verified_patient["name"]
+        result = await confirm_booking(slot_handle, patient_id, patient_name)
         # Only announce a booking to the UI if it actually succeeded
         if result.startswith("Appointment confirmed"):
             await self.publish_event("slot_booked", {"slot": slot_handle, "patient": patient_name})
@@ -138,7 +141,9 @@ class ClinicAgent(Agent):
         context: RunContext,
     ) -> str:
         """Request a prescription refill for a medication."""
-        result = evaluate_refill(medication_name)
+        if not self.verified_patient:
+            return "Please verify your full name and date of birth first before requesting a refill."
+        result = await evaluate_refill(medication_name, self.verified_patient["id"])
         return result["message"]
 
 

@@ -1,41 +1,25 @@
-from typing import Dict, Any, Optional
+"""Clinic rules, now backed by PostgreSQL.
+
+Same function names as before, but they are async now (use `await`).
+"""
+import os
+import re
 from datetime import datetime
+from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
-# Synthetic patient records for demo testing
-PATIENTS_DATABASE = {
-    ("maria gonzalez", "1985-03-14"): {
-        "id": "p_01",
-        "name": "Maria Gonzalez",
-        "insurance": {"copay": "$20", "deductible": "$500"},
-        "prescriptions": ["Amoxicillin"]
-    },
-    ("travis", "1997-07-14"): {
-        "id": "p_02",
-        "name": "Travis",
-        "insurance": {"copay": "$15", "deductible": "$250"},
-        "prescriptions": ["Lisinopril"]
-    },
-    ("robert chen", "1958-05-09"): {
-        "id": "p_03",
-        "name": "Robert Chen",
-        "insurance": {"copay": "$10", "deductible": "$0"},
-        "prescriptions": ["Lisinopril", "Lorazepam"]  # Controlled substance!
-    }
-}
+from db import get_pool
 
-# Available slots represented by OPAQUE HANDLES (s1, s2)
-# The AI only gets to pick these handles, preventing invented dates/times
-APPOINTMENT_SLOTS = {
-    "s1": {"label": "Thursday at 9:00 AM", "doctor": "Dr. Miller", "booked": False},
-    "s2": {"label": "Thursday at 2:30 PM", "doctor": "Dr. Miller", "booked": False},
-    "s3": {"label": "Friday at 11:00 AM", "doctor": "Dr. Sharma", "booked": False},
-}
+CLINIC_TZ = ZoneInfo(os.getenv("CLINIC_TIMEZONE", "Asia/Kolkata"))
 
+# This safety rule stays in plain code on purpose
 CONTROLLED_DRUGS = {"lorazepam", "adderall", "oxycodone", "xanax", "morphine"}
 
 
+# ---------- small helpers ----------
+
 def normalize_dob(dob: str) -> str:
-    """Normalize common spoken or written date formats to ISO YYYY-MM-DD."""
+    """Turn common spoken or written date formats into YYYY-MM-DD."""
     cleaned = dob.strip()
     date_formats = [
         "%Y-%m-%d",
@@ -56,44 +40,114 @@ def normalize_dob(dob: str) -> str:
     return cleaned
 
 
-def find_patient(name: str, dob: str) -> Optional[Dict[str, Any]]:
-    """Strict code verification: matches normalized name and date of birth."""
-    norm_dob = normalize_dob(dob)
-    key = (name.strip().lower(), norm_dob)
-    return PATIENTS_DATABASE.get(key)
+def _slot_label(starts_at: datetime) -> str:
+    """Make a speakable label like 'Thursday, November 26 at 9:00 AM'."""
+    local = starts_at.astimezone(CLINIC_TZ)
+    hour12 = local.hour % 12 or 12
+    am_pm = "AM" if local.hour < 12 else "PM"
+    return f"{local:%A, %B} {local.day} at {hour12}:{local:%M} {am_pm}"
 
 
-def get_open_slots() -> str:
-    """Returns available slots formatted with their handles."""
-    available = [f"{handle}: {data['label']} with {data['doctor']}" 
-                 for handle, data in APPOINTMENT_SLOTS.items() if not data["booked"]]
-    if not available:
+# ---------- patients ----------
+
+async def find_patient(name: str, dob: str) -> Optional[Dict[str, Any]]:
+    """Match name and date of birth. Returns the patient, or None."""
+    try:
+        dob_date = datetime.strptime(normalize_dob(dob), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, copay, deductible FROM patients "
+        "WHERE lower(name) = lower($1) AND date_of_birth = $2",
+        name.strip(), dob_date,
+    )
+    if row is None:
+        return None
+
+    meds = await pool.fetch(
+        "SELECT medication FROM prescriptions WHERE patient_id = $1", row["id"]
+    )
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "insurance": {"copay": row["copay"], "deductible": row["deductible"]},
+        "prescriptions": [m["medication"] for m in meds],
+    }
+
+
+# ---------- appointments ----------
+
+async def get_open_slots(limit: int = 6) -> str:
+    """List the next free future slots. Handles look like s12 (opaque to the caller)."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT id, starts_at, doctor FROM appointments "
+        "WHERE patient_id IS NULL AND starts_at > now() "
+        "ORDER BY starts_at LIMIT $1",
+        limit,
+    )
+    if not rows:
         return "There are no open appointment slots available."
-    return "Available slots: " + "; ".join(available)
+    items = [f"s{r['id']}: {_slot_label(r['starts_at'])} with {r['doctor']}" for r in rows]
+    return "Available slots: " + "; ".join(items)
 
 
-def confirm_booking(slot_handle: str, patient_name: str) -> str:
-    """Deterministic slot assignment with concurrency check."""
-    slot = APPOINTMENT_SLOTS.get(slot_handle.lower().strip())
-    if not slot:
+async def confirm_booking(slot_handle: str, patient_id: int, patient_name: str) -> str:
+    """Book a slot with ONE atomic update, so two callers cannot get the same slot."""
+    match = re.fullmatch(r"s(\d+)", slot_handle.strip().lower())
+    if not match:
         return "That slot handle is invalid. Please pick from the available slots."
-    if slot["booked"]:
-        return "That slot was just booked by another caller. Please choose another."
-    
-    slot["booked"] = True
-    slot["patient"] = patient_name
-    return f"Appointment confirmed for {patient_name} on {slot['label']} with {slot['doctor']}."
+    slot_id = int(match.group(1))
+
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "UPDATE appointments SET patient_id = $1 "
+        "WHERE id = $2 AND patient_id IS NULL AND starts_at > now() "
+        "RETURNING starts_at, doctor",
+        patient_id, slot_id,
+    )
+    if row is not None:
+        return (
+            f"Appointment confirmed for {patient_name} on "
+            f"{_slot_label(row['starts_at'])} with {row['doctor']}."
+        )
+
+    # The update changed nothing. Find out why, to give a helpful answer.
+    exists = await pool.fetchval("SELECT 1 FROM appointments WHERE id = $1", slot_id)
+    if not exists:
+        return "That slot handle is invalid. Please pick from the available slots."
+    return "That slot is no longer available. Please choose another."
 
 
-def evaluate_refill(medication: str) -> Dict[str, Any]:
-    """Plain-code safety check: flags controlled substances for nurse handoff."""
-    med = medication.strip().lower()
-    if med in CONTROLLED_DRUGS:
+# ---------- refills ----------
+
+async def evaluate_refill(medication: str, patient_id: int) -> Dict[str, Any]:
+    """Check the patient's real prescriptions, then apply the controlled-drug rule."""
+    med = medication.strip()
+    pool = await get_pool()
+
+    on_file = await pool.fetchval(
+        "SELECT 1 FROM prescriptions WHERE patient_id = $1 AND lower(medication) = lower($2)",
+        patient_id, med,
+    )
+    if not on_file:
+        return {
+            "action": "NOT_ON_FILE",
+            "message": f"I don't see {med.title()} in your records. A staff member can help you with that.",
+        }
+
+    if med.lower() in CONTROLLED_DRUGS:
         return {
             "action": "TRANSFER",
-            "message": f"{medication.capitalize()} is a controlled substance and requires clinical nurse authorization. I am putting you in line for a nurse transfer."
+            "message": (
+                f"{med.title()} is a controlled substance and requires clinical nurse "
+                "authorization. I am putting you in line for a nurse transfer."
+            ),
         }
+
     return {
         "action": "APPROVED",
-        "message": f"Your refill for {medication.capitalize()} has been submitted to your clinic pharmacy."
+        "message": f"Your refill for {med.title()} has been submitted to your clinic pharmacy.",
     }

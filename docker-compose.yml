@@ -1,0 +1,23 @@
+# PostgreSQL for Sidzi.
+# If you already have a docker-compose.yml (for Redis), copy only the "postgres" service
+# and the "pgdata" volume into it.
+#
+# Host port is 5433 (not 5432) so it does not clash with any PostgreSQL
+# already installed on your computer (for example from your HRMS project).
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: sidzi-postgres
+    environment:
+      POSTGRES_USER: sidzi
+      POSTGRES_PASSWORD: sidzi_pass
+      POSTGRES_DB: sidzi
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
